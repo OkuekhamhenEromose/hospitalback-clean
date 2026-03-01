@@ -1,0 +1,49 @@
+# render.yaml
+services:
+  - type: web
+    name: hospital-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: gunicorn api.wsgi:application --workers 4 --worker-class sync --timeout 180 --max-requests 1000 --max-requests-jitter 100
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hospital-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: hospital-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: false
+      - key: USE_S3
+        value: true
+
+  - type: worker
+    name: hospital-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A api worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hospital-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: hospital-redis
+          property: connectionString
+
+  - type: redis
+    name: hospital-redis
+    ipAllowList: []
+    plan: free
+
+databases:
+  - name: hospital-db
+    databaseName: hospital
+    plan: free

@@ -359,38 +359,16 @@ class StaffListView(generics.ListAPIView):
         )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# BLOG VIEWS
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# ALL cache_page decorators have been removed (FIX-1).
-#
-# Pattern used throughout:
-#   1. cache.get(cache_key)       — hit → return Response(cached_data)
-#   2. super().get(...)           — miss → run the queryset
-#   3. cache.set(key, response.data, timeout)   — store the plain dict/list
-#
-# response.data is already serialized to a plain Python structure by DRF,
-# so json.dumps() works fine. The full Response object is never stored.
-# ══════════════════════════════════════════════════════════════════════════════
-
 class BlogPostLatestView(generics.ListAPIView, CacheMixin):
     """
     GET /hospital/blog/latest/?limit=N
     Public endpoint — no authentication required.
-    Returns the N most recently published posts (default 6).
-    Registered in hospital/urls.py as:
-        path('blog/latest/', BlogPostLatestView.as_view()),
-    IMPORTANT: this path must come BEFORE path('blog/<slug:slug>/')
-    otherwise 'latest' is matched as a slug and returns 404.
-
-    FIX-2: Only ONE definition of this class in the module.
-    FIX-3: No cache_page. Manual cache used instead.
     """
-    serializer_class   = BlogPostListSerializer
+    serializer_class = BlogPostListSerializer
     permission_classes = [permissions.AllowAny]
-    cache_timeout      = 300
-    cache_key_prefix   = 'blog_latest'
+    authentication_classes = []  # ADD THIS LINE - explicitly disable authentication
+    cache_timeout = 300
+    cache_key_prefix = 'blog_latest'
 
     def get_queryset(self):
         try:

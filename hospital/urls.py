@@ -49,11 +49,11 @@ urlpatterns = [
     # ── Blog ──────────────────────────────────────────────────────────────────
     # Exact paths MUST come before the slug catch-all or 'latest'/'search'/
     # 'admin/...' would be treated as slug values and return 404.
-    path('blog/latest/',                    BlogPostLatestView.as_view(),              name='blog-latest'),
+    path('blog/latest/', BlogPostLatestView.as_view(), name='blog-latest'),
     path('blog/search/',                    BlogPostSearchView.as_view(),              name='blog-search'),
     path('blog/admin/stats/',               BlogStatsView.as_view(),                   name='blog-stats'),
     path('blog/admin/all/',                 AdminBlogPostListView.as_view(),           name='blog-admin-all'),
     path('blog/author/<int:author_id>/',    BlogPostByAuthorView.as_view(),            name='blog-by-author'),
     path('blog/',                           BlogPostListCreateView.as_view(),          name='blog-list-create'),
-    path('blog/<slug:slug>/',               BlogPostRetrieveUpdateDestroyView.as_view(), name='blog-detail'),
+    path('blog/<slug:slug>/', BlogPostRetrieveUpdateDestroyView.as_view(), name='blog-detail'),
 ]

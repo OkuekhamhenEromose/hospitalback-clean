@@ -281,7 +281,14 @@ class BlogPost(models.Model):
             self.published_date = timezone.now()
 
         if not self.slug:
-            self.slug = slugify(self.title)
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            # Check for existing slugs and append number if needed
+            while BlogPost.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
 
         if self.content:
             if self.enable_toc:
@@ -289,6 +296,7 @@ class BlogPost(models.Model):
             self.extract_subheadings()
 
         super().save(*args, **kwargs)
+        
 
     def generate_table_of_contents(self):
         import re

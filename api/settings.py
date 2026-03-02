@@ -174,41 +174,24 @@ AWS_CREDENTIALS_PROVIDED = all([
 ])
 
 if AWS_CREDENTIALS_PROVIDED:
-    # FIX: replaced print() with logger — print() is unstructured and ignored
-    # by log aggregators on Render.com.
     logger.info('AWS S3 credentials found — using S3 storage')
-
-    # ── DO NOT set AWS_S3_CUSTOM_DOMAIN ──────────────────────────────────────
-    #
-    # AWS_S3_CUSTOM_DOMAIN is the single root cause of broken image URLs.
-    # S3Boto3Storage.url() short-circuits to an UNSIGNED URL when custom_domain
-    # is truthy — AWS_QUERYSTRING_AUTH is never reached. Unsigned URLs return
-    # 403 on any private bucket (the AWS default since April 2023).
-    #
-    # Without this setting, self.custom_domain = None, so url() falls through
-    # to generate_presigned_url() and returns a signed URL that works on
-    # private buckets with no AWS console changes needed.
 
     AWS_S3_USE_SSL        = True
     AWS_S3_SECURE_URLS    = True
     AWS_S3_FILE_OVERWRITE = False
-
-    # eu-north-1 only accepts Signature Version 4.
+    AWS_S3_REGION_NAME = AWS_S3_REGION_NAME
     AWS_S3_SIGNATURE_VERSION = 's3v4'
-
-    # Presigned URLs — only reached because custom_domain is unset (None).
-    AWS_QUERYSTRING_AUTH   = True
-    AWS_QUERYSTRING_EXPIRE = 86400
-
-    AWS_DEFAULT_ACL = None
-    AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+        'ACL': 'public-read',
+    }
 
     DEFAULT_FILE_STORAGE = 'hospital.storage_backends.MediaStorage'
     MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/media/'
 else:
     logger.warning('AWS S3 credentials missing — using local filesystem storage')
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
-    MEDIA_URL  = '/media/'  # This already has trailing slash
+    MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Used by serializers when constructing absolute local media URLs

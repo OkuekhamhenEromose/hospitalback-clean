@@ -70,7 +70,7 @@ urlpatterns = [
     # ── Appointments ───────────────────────────────────────────────────────
     path('appointments/create/',AppointmentCreateView.as_view(),  name='appointment-create'),
     path('appointments/',AppointmentListView.as_view(),    name='appointment-list'),
-    path('appointments/<int:pk>/', AppointmentDetailView.as_view(), name='appointment-detail'),
+    path('appointments/<int:pk>/',AppointmentDetailView.as_view(), name='appointment-detail'),
 
     # ── Staff assignment helpers ────────────────────────────────────────────
     path('assignments/assign-staff/',AssignStaffView.as_view(),name='assign-staff'),

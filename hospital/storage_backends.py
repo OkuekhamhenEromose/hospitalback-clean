@@ -13,62 +13,65 @@ def _build_storage():
     try:
         from storages.backends.s3boto3 import S3Boto3Storage
         from storages.utils import clean_name
+        import boto3
+        from botocore.config import Config
 
         class _S3MediaStorage(S3Boto3Storage):
-            location         = 'media'
-            file_overwrite   = False
+            location       = 'media'
+            file_overwrite = False
+            custom_domain  = None  # prevents unsigned custom-domain URL branch
 
-            # ── Class-level attribute overrides ──────────────────────────────
-            #
-            # WHY THIS IS NEEDED
-            # ──────────────────
-            # S3Boto3Storage.__init__ reads Django settings and stores them as
-            # instance attributes. In django-storages >= 1.13 the values are
-            # also stored in self._config (a private dict). S3Boto3Storage.url()
-            # in those versions reads from self._config, NOT from
-            # self.custom_domain / self.querystring_auth. So assigning to the
-            # instance AFTER __init__ (our previous approach) was silently
-            # ignored — url() kept hitting Branch 1 (unsigned custom-domain
-            # URL) because self._config['custom_domain'] was still set.
-            #
-            # Class-level attributes are read by S3Boto3Storage.__init__ and
-            # stored in self._config, so they win unconditionally regardless
-            # of what AWS_S3_CUSTOM_DOMAIN says in Django settings.
-            #
-            # Branch 1 fires when self.custom_domain is truthy. Setting it to
-            # None as a class attribute ensures __init__ always initialises
-            # self._config['custom_domain'] = None.
-            custom_domain    = None   # prevents Branch 1 (unsigned f-string URL)
-
-            # ── Definitive URL override ───────────────────────────────────────
-            #
-            # Even with custom_domain = None, self.querystring_auth in
-            # self._config could still be False (if AWS_QUERYSTRING_AUTH=False
-            # in settings), landing on Branch 3 (unsigned plain S3 URL).
-            #
-            # Overriding url() completely eliminates all branching. We call
-            # boto3's generate_presigned_url() directly. This approach is:
-            #   - Immune to django-storages version differences
-            #   - Immune to AWS_QUERYSTRING_AUTH in settings.py
-            #   - Immune to _config vs instance-attribute storage differences
-            #   - Works on private buckets (no "Block all public access" changes)
-            #   - Works on eu-north-1 (SigV4 is what boto3 uses for this region)
             def url(self, name, parameters=None, expire=None, http_method=None):
                 """
-                Always return a SigV4 pre-signed URL generated directly via boto3.
-                Bypasses all S3Boto3Storage.url() branch logic entirely.
+                Generate a SigV4 pre-signed URL using an explicit boto3 client.
+
+                WHY AN EXPLICIT CLIENT:
+                ─────────────────────────────────────────────────────────────────
+                self.bucket.meta.client inherits from S3Boto3Storage's internal
+                boto3 session. That session is NOT guaranteed to have:
+                  1. Explicit credentials (it may fall back to env/instance-profile
+                     discovery at an unexpected priority)
+                  2. Signature Version 4 configured (required for eu-north-1)
+
+                Creating boto3.client() explicitly with credentials from Django
+                settings and config=Config(signature_version='s3v4') eliminates
+                all ambiguity and is immune to S3Boto3Storage version differences.
+
+                EXPIRE PRIORITY:
+                  1. expire argument (caller override)
+                  2. AWS_QUERYSTRING_EXPIRE from Django settings
+                  3. Hard default of 86400 s (24 h)
+
+                Using AWS_QUERYSTRING_EXPIRE here keeps settings.py as the single
+                source of truth rather than duplicating the value in two places.
                 """
                 try:
                     name   = self._normalize_name(clean_name(name))
-                    expire = expire if expire is not None else 3600
+                    expire = (
+                        expire
+                        if expire is not None
+                        else getattr(settings, 'AWS_QUERYSTRING_EXPIRE', 86400)
+                    )
 
-                    signed_url = self.bucket.meta.client.generate_presigned_url(
+                    client = boto3.client(
+                        's3',
+                        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                        region_name=getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1'),
+                        # eu-north-1 only accepts Signature Version 4
+                        config=Config(signature_version='s3v4'),
+                    )
+
+                    signed_url = client.generate_presigned_url(
                         'get_object',
-                        Params={'Bucket': self.bucket_name, 'Key': name},
+                        Params={
+                            'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
+                            'Key': name,
+                        },
                         ExpiresIn=expire,
                     )
 
-                    # boto3 may return http:// for path-style endpoints
+                    # boto3 occasionally returns http:// for path-style endpoints
                     if signed_url and signed_url.startswith('http://'):
                         signed_url = 'https://' + signed_url[7:]
 
@@ -76,44 +79,52 @@ def _build_storage():
 
                 except Exception as e:
                     logger.error(
-                        'MediaStorage.url() failed to generate presigned URL '
-                        'for %r: %s — falling back to unsigned URL', name, e,
+                        'MediaStorage.url() FAILED to generate presigned URL '
+                        'for %r: %s — falling back to unsigned URL (will 403 on private bucket)',
+                        name, e, exc_info=True,
                     )
-                    # Fallback: at least return something rather than crashing
+                    # Last-resort fallback — callers see something rather than an exception.
+                    # NOTE: this URL will return 403 on private buckets. If this error
+                    # appears in logs the credentials / region config must be investigated.
+                    region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
                     return (
-                        f"https://{self.bucket_name}.s3"
-                        f".{getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')}"
-                        f".amazonaws.com/{name}"
+                        f"https://{settings.AWS_STORAGE_BUCKET_NAME}"
+                        f".s3.{region}.amazonaws.com/{name}"
                     )
 
         storage = _S3MediaStorage()
 
         # ── Startup verification ──────────────────────────────────────────────
-        # Generate a test presigned URL at startup so the Render log immediately
-        # shows whether signing is working. Look for this line after each deploy.
+        # Generates a test presigned URL immediately so the first Render log
+        # line after each deploy tells you whether signing is working.
+        # Look for "STARTUP CHECK" after every deploy — if presigned=False
+        # images WILL return 403 and nothing in the request path will fix it.
         try:
-            test_url = storage.url('startup-test-key')
+            test_url  = storage.url('startup-test-key')
             is_signed = 'X-Amz-Signature' in test_url
             logger.info(
                 'MediaStorage STARTUP CHECK — bucket=%s region=%s '
-                'presigned=%s url_prefix=%s',
+                'presigned=%s url_prefix=%.80s',
                 settings.AWS_STORAGE_BUCKET_NAME,
                 getattr(settings, 'AWS_S3_REGION_NAME', '?'),
                 is_signed,
-                test_url[:60],
+                test_url,
             )
             if not is_signed:
                 logger.error(
-                    'MediaStorage STARTUP CHECK FAILED — URL is not presigned! '
-                    'Images will return 403. Full URL: %s', test_url,
+                    'MediaStorage STARTUP CHECK FAILED — URL is NOT presigned! '
+                    'All image requests will return 403. Full URL: %s', test_url,
                 )
         except Exception as e:
-            logger.error('MediaStorage startup check raised: %s', e)
+            logger.error('MediaStorage startup check raised: %s', e, exc_info=True)
 
         return storage
 
     except Exception as exc:
-        logger.error('MediaStorage: S3 init failed (%s) — falling back to FileSystemStorage', exc)
+        logger.error(
+            'MediaStorage: S3 init failed (%s) — falling back to FileSystemStorage',
+            exc, exc_info=True,
+        )
         return FileSystemStorage()
 
 

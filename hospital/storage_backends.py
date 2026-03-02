@@ -33,32 +33,58 @@ def _build_storage():
         class _S3MediaStorage(S3Boto3Storage):
             location       = 'media'
             file_overwrite = False
-            # AWS_S3_CUSTOM_DOMAIN from settings.py is picked up automatically
-            # by S3Boto3Storage — no need to set custom_domain here.
 
         storage = _S3MediaStorage()
 
-        # ── FIX: force pre-signed URL generation ──────────────────────────────
-        # S3Boto3Storage.__init__ reads AWS_S3_CUSTOM_DOMAIN from Django settings
-        # and stores it as self.custom_domain. S3Boto3Storage.url() then checks:
+        # ══════════════════════════════════════════════════════════════════════
+        # WHY IMAGE URLs WERE RETURNING 403
+        # ══════════════════════════════════════════════════════════════════════
         #
-        #   if self.custom_domain:
-        #       return f"https://{custom_domain}/{key}"  # ← unsigned, no query params
+        # S3Boto3Storage.url() has three branches, checked in order:
         #
-        # This short-circuits BEFORE the generate_presigned_url() call, so
-        # AWS_QUERYSTRING_AUTH = True has zero effect when custom_domain is set.
-        # The returned unsigned URL hits a private bucket → 403 in the browser.
+        #   Branch 1  if self.custom_domain:
+        #                 return f"https://{custom_domain}/{name}"
+        #                 # ← plain unsigned URL — always fired because
+        #                 #   AWS_S3_CUSTOM_DOMAIN is set in settings.py
         #
-        # Fix: null out custom_domain after init so url() falls through to
-        # generate_presigned_url(). AWS_QUERYSTRING_AUTH = True and
-        # AWS_S3_SIGNATURE_VERSION = 's3v4' (both set in settings.py) then
-        # produce a valid SigV4 pre-signed URL that works with private buckets
-        # regardless of the bucket's public-access policy.
+        #   Branch 2  elif self.querystring_auth:
+        #                 return generate_presigned_url(...)
+        #                 # ← SigV4 pre-signed URL, works with private buckets
+        #
+        #   Branch 3  else:
+        #                 return unsigned_s3_url_without_query_params
+        #                 # ← also returns 403 against a private bucket
+        #
+        # AWS S3 buckets created after April 2023 have "Block all public access"
+        # enabled by default (including this eu-north-1 bucket). A plain unsigned
+        # URL against a private bucket returns 403 in the browser.
+        #
+        # Fix A — disable custom_domain:
+        #   Setting custom_domain = None prevents Branch 1 from firing.
+        #   Control falls through to Branch 2 or 3.
         storage.custom_domain = None
 
+        # Fix B — force presigned URL generation:
+        #   The original settings.py had AWS_QUERYSTRING_AUTH = False, which
+        #   made S3Boto3Storage.__init__ set self.querystring_auth = False.
+        #   With custom_domain = None and querystring_auth = False, url() takes
+        #   Branch 3 and still returns an unsigned URL → still 403.
+        #
+        #   Setting querystring_auth = True HERE (on the instance, after init)
+        #   forces Branch 2 regardless of what AWS_QUERYSTRING_AUTH says in
+        #   settings.py. This file is now the single source of truth for URL
+        #   signing — independent of whether settings.py has been updated.
+        storage.querystring_auth = True
+
+        # Set a reasonable expiry. 3600 s = 1 hour.
+        storage.querystring_expire = 3600
+
         logger.info(
-            'MediaStorage: S3 initialised for bucket %s (presigned URLs enabled)',
+            'MediaStorage: S3 ready — bucket=%s, region=%s. '
+            'custom_domain=None, querystring_auth=True → '
+            'presigned SigV4 URLs (1 h expiry).',
             settings.AWS_STORAGE_BUCKET_NAME,
+            getattr(settings, 'AWS_S3_REGION_NAME', 'unknown'),
         )
         return storage
 

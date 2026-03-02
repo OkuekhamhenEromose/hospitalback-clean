@@ -178,45 +178,33 @@ if AWS_CREDENTIALS_PROVIDED:
     # by log aggregators on Render.com.
     logger.info('AWS S3 credentials found — using S3 storage')
 
-    AWS_S3_CUSTOM_DOMAIN  = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
+    # ── DO NOT set AWS_S3_CUSTOM_DOMAIN ──────────────────────────────────────
+    #
+    # AWS_S3_CUSTOM_DOMAIN is the single root cause of broken image URLs.
+    # S3Boto3Storage.url() short-circuits to an UNSIGNED URL when custom_domain
+    # is truthy — AWS_QUERYSTRING_AUTH is never reached. Unsigned URLs return
+    # 403 on any private bucket (the AWS default since April 2023).
+    #
+    # Without this setting, self.custom_domain = None, so url() falls through
+    # to generate_presigned_url() and returns a signed URL that works on
+    # private buckets with no AWS console changes needed.
+
     AWS_S3_USE_SSL        = True
     AWS_S3_SECURE_URLS    = True
     AWS_S3_FILE_OVERWRITE = False
 
-    # ── FIX 1: SigV4 required for eu-north-1 ─────────────────────────────────
-    # eu-north-1 (Stockholm) only supports Signature Version 4. Without this,
-    # every boto3 request (upload, head_object, generate_presigned_url) is
-    # signed with SigV2 which the region rejects with a 400/403.
+    # eu-north-1 only accepts Signature Version 4.
     AWS_S3_SIGNATURE_VERSION = 's3v4'
 
-    # ── FIX 2: Use signed (pre-signed) URLs ───────────────────────────────────
-    # AWS S3 buckets created after April 2023 have "Block all public access"
-    # enabled by default. Setting AWS_QUERYSTRING_AUTH = False returns plain
-    # unsigned URLs — these return 403 against a private bucket.
-    #
-    # AWS_QUERYSTRING_AUTH = True makes the storage backend's .url property
-    # return a pre-signed URL. Pre-signed URLs embed the AWS credentials and
-    # an expiry timestamp in the query-string, so they work regardless of the
-    # bucket's public-access policy — no AWS console changes required.
-    #
-    # Alternative (production): Keep QUERYSTRING_AUTH = False and instead add
-    # a bucket policy granting s3:GetObject to Principal "*" on the media prefix.
+    # Presigned URLs — only reached because custom_domain is unset (None).
     AWS_QUERYSTRING_AUTH   = True
-    AWS_QUERYSTRING_EXPIRE = 86400   # 24 h — safe for cached responses
+    AWS_QUERYSTRING_EXPIRE = 86400
 
-    # ── FIX 3: Remove ACL settings ───────────────────────────────────────────
-    # 'public-read' ACL uploads fail silently when the bucket has
-    # "Block public ACLs" turned on (the new AWS default). The object is
-    # created but the ACL is silently stripped, leaving the object private.
-    # Dropping the ACL entirely is safe because we're using signed URLs above.
     AWS_DEFAULT_ACL = None
-    AWS_S3_OBJECT_PARAMETERS = {
-        'CacheControl': 'max-age=86400',
-        # No 'ACL' key — let the bucket policy control access
-    }
+    AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
 
     DEFAULT_FILE_STORAGE = 'hospital.storage_backends.MediaStorage'
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+    MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/media/'
 else:
     logger.warning('AWS S3 credentials missing — using local filesystem storage')
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'

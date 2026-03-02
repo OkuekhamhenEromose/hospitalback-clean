@@ -208,7 +208,7 @@ if AWS_CREDENTIALS_PROVIDED:
 else:
     logger.warning('AWS S3 credentials missing — using local filesystem storage')
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
-    MEDIA_URL  = '/media/'
+    MEDIA_URL  = '/media/'  # This already has trailing slash
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Used by serializers when constructing absolute local media URLs

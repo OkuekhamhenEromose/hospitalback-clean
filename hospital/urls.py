@@ -68,13 +68,13 @@ urlpatterns = [
     path('', include(router.urls)),
 
     # ── Appointments ───────────────────────────────────────────────────────
-    path('appointments/create/', AppointmentCreateView.as_view(),  name='appointment-create'),
-    path('appointments/',        AppointmentListView.as_view(),    name='appointment-list'),
+    path('appointments/create/',AppointmentCreateView.as_view(),  name='appointment-create'),
+    path('appointments/',AppointmentListView.as_view(),    name='appointment-list'),
     path('appointments/<int:pk>/', AppointmentDetailView.as_view(), name='appointment-detail'),
 
     # ── Staff assignment helpers ────────────────────────────────────────────
-    path('assignments/assign-staff/',               AssignStaffView.as_view(),           name='assign-staff'),
-    path('assignments/available-staff/',            AvailableStaffView.as_view(),         name='available-staff'),
+    path('assignments/assign-staff/',AssignStaffView.as_view(),name='assign-staff'),
+    path('assignments/available-staff/',            AvailableStaffView.as_view(),name='available-staff'),
     path('assignments/appointment/<int:appointment_id>/', AppointmentAssignmentsView.as_view(), name='appointment-assignments'),
 
     # ── Vital requests ──────────────────────────────────────────────────────

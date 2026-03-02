@@ -37,8 +37,27 @@ def _build_storage():
             # by S3Boto3Storage — no need to set custom_domain here.
 
         storage = _S3MediaStorage()
+
+        # ── FIX: force pre-signed URL generation ──────────────────────────────
+        # S3Boto3Storage.__init__ reads AWS_S3_CUSTOM_DOMAIN from Django settings
+        # and stores it as self.custom_domain. S3Boto3Storage.url() then checks:
+        #
+        #   if self.custom_domain:
+        #       return f"https://{custom_domain}/{key}"  # ← unsigned, no query params
+        #
+        # This short-circuits BEFORE the generate_presigned_url() call, so
+        # AWS_QUERYSTRING_AUTH = True has zero effect when custom_domain is set.
+        # The returned unsigned URL hits a private bucket → 403 in the browser.
+        #
+        # Fix: null out custom_domain after init so url() falls through to
+        # generate_presigned_url(). AWS_QUERYSTRING_AUTH = True and
+        # AWS_S3_SIGNATURE_VERSION = 's3v4' (both set in settings.py) then
+        # produce a valid SigV4 pre-signed URL that works with private buckets
+        # regardless of the bucket's public-access policy.
+        storage.custom_domain = None
+
         logger.info(
-            'MediaStorage: S3 initialised for bucket %s',
+            'MediaStorage: S3 initialised for bucket %s (presigned URLs enabled)',
             settings.AWS_STORAGE_BUCKET_NAME,
         )
         return storage

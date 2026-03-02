@@ -334,6 +334,19 @@ class LabResultCreateView(generics.CreateAPIView):
             TestRequest.objects.filter(pk=tr.pk).update(status='DONE')
             logger.info('All tests completed for %s', tr.appointment.name)
 
+class TestRequestListView(generics.ListAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = TestRequestSerializer
+
+    def get_queryset(self):
+        profile = self.request.user.profile
+        if profile.role == 'LAB':
+            return TestRequest.objects.filter(
+                models.Q(assigned_to=profile) | models.Q(status='PENDING')
+            ).order_by('-created_at')
+        if profile.role == 'DOCTOR':
+            return TestRequest.objects.filter(requested_by=profile).order_by('-created_at')
+        return TestRequest.objects.all().order_by('-created_at')
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MEDICAL REPORT  (doctor creates)

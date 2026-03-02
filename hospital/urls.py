@@ -7,7 +7,7 @@ from .views import (
     AvailableStaffView,   # ← was never registered — causes the 404 in logs
     AssignStaffView, PatientListView,
     VitalRequestCreateView, VitalRequestListView,
-    VitalsCreateView, LabResultCreateView, MedicalReportCreateView,
+    VitalsCreateView, LabResultCreateView, TestRequestListView, MedicalReportCreateView,
     StaffListView,
     BlogPostLatestView, BlogPostListCreateView,
     BlogPostRetrieveUpdateDestroyView, BlogPostSearchView,
@@ -43,8 +43,9 @@ urlpatterns = [
     path('vital-requests/',        VitalRequestListView.as_view(),   name='vital-request-list'),
     path('vital-requests/create/', VitalRequestCreateView.as_view(), name='vital-request-create'),
     path('vitals/create/',         VitalsCreateView.as_view(),       name='vitals-create'),
-    path('lab-results/create/',    LabResultCreateView.as_view(),    name='lab-result-create'),
+    path('lab-results/create/', LabResultCreateView.as_view(),    name='lab-result-create'),
     path('medical-reports/create/', MedicalReportCreateView.as_view(), name='medical-report-create'),
+    path('test-requests/', TestRequestListView.as_view(), name='test-request-list'),
 
     # ── Blog ──────────────────────────────────────────────────────────────────
     # Exact paths MUST come before the slug catch-all or 'latest'/'search'/

@@ -538,7 +538,7 @@ class GoogleOAuthCallbackView(APIView):
                     'code':          code,
                     'client_id':     settings.SOCIAL_AUTH_GOOGLE_OAUTH2_KEY,
                     'client_secret': settings.SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET,
-                    'redirect_uri':  'https://dhospitalback.onrender.com/api/users/google-callback/',
+                    'redirect_uri':  'https://hospitalback-clean.onrender.com/api/users/google-callback/',
                     'grant_type':    'authorization_code',
                 },
             )

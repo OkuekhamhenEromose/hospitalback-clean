@@ -181,19 +181,38 @@ if AWS_CREDENTIALS_PROVIDED:
     AWS_S3_CUSTOM_DOMAIN  = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
     AWS_S3_USE_SSL        = True
     AWS_S3_SECURE_URLS    = True
-    AWS_QUERYSTRING_AUTH  = False
     AWS_S3_FILE_OVERWRITE = False
 
-    # S3 ACL NOTE: AWS blocks public ACLs by default on new buckets.
-    # If 'Block all public access' is enabled on your bucket, remove the two
-    # lines below and grant public read access via a bucket policy instead:
-    #   { "Effect": "Allow", "Principal": "*", "Action": "s3:GetObject",
-    #     "Resource": "arn:aws:s3:::YOUR-BUCKET/*" }
-    # To switch: set AWS_DEFAULT_ACL = None and remove 'ACL' from OBJECT_PARAMETERS.
-    AWS_DEFAULT_ACL = 'public-read'
+    # ── FIX 1: SigV4 required for eu-north-1 ─────────────────────────────────
+    # eu-north-1 (Stockholm) only supports Signature Version 4. Without this,
+    # every boto3 request (upload, head_object, generate_presigned_url) is
+    # signed with SigV2 which the region rejects with a 400/403.
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+
+    # ── FIX 2: Use signed (pre-signed) URLs ───────────────────────────────────
+    # AWS S3 buckets created after April 2023 have "Block all public access"
+    # enabled by default. Setting AWS_QUERYSTRING_AUTH = False returns plain
+    # unsigned URLs — these return 403 against a private bucket.
+    #
+    # AWS_QUERYSTRING_AUTH = True makes the storage backend's .url property
+    # return a pre-signed URL. Pre-signed URLs embed the AWS credentials and
+    # an expiry timestamp in the query-string, so they work regardless of the
+    # bucket's public-access policy — no AWS console changes required.
+    #
+    # Alternative (production): Keep QUERYSTRING_AUTH = False and instead add
+    # a bucket policy granting s3:GetObject to Principal "*" on the media prefix.
+    AWS_QUERYSTRING_AUTH   = True
+    AWS_QUERYSTRING_EXPIRE = 86400   # 24 h — safe for cached responses
+
+    # ── FIX 3: Remove ACL settings ───────────────────────────────────────────
+    # 'public-read' ACL uploads fail silently when the bucket has
+    # "Block public ACLs" turned on (the new AWS default). The object is
+    # created but the ACL is silently stripped, leaving the object private.
+    # Dropping the ACL entirely is safe because we're using signed URLs above.
+    AWS_DEFAULT_ACL = None
     AWS_S3_OBJECT_PARAMETERS = {
         'CacheControl': 'max-age=86400',
-        'ACL': 'public-read',
+        # No 'ACL' key — let the bucket policy control access
     }
 
     DEFAULT_FILE_STORAGE = 'hospital.storage_backends.MediaStorage'

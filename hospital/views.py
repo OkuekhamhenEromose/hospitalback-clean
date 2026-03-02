@@ -58,6 +58,11 @@ class AppointmentCreateView(generics.CreateAPIView):
         appointment = serializer.save(patient=profile)
         logger.info('Appointment %d created for patient: %s', appointment.pk, profile.user.username)
 
+# Remove these decorators:
+# @method_decorator(cache_page(60))
+# @method_decorator(vary_on_headers('Authorization'))
+
+# Replace with manual caching in the get method:
 
 class AppointmentListView(generics.ListAPIView, CacheMixin):
     permission_classes = [permissions.IsAuthenticated]
@@ -67,12 +72,6 @@ class AppointmentListView(generics.ListAPIView, CacheMixin):
 
     def get_queryset(self):
         profile = self.request.user.profile
-
-        # FIX: Full prefetch_related so AppointmentSerializer.to_representation()
-        # does not issue separate queries per appointment (N+1).
-        # The previous prefetch only fetched id+status which is insufficient —
-        # to_representation() accesses lab_results, vitals_entries, assigned_to,
-        # medical_report, and more, triggering one query per field per row.
         base_queryset = Appointment.objects.select_related(
             'patient', 'patient__user',
             'doctor',  'doctor__user',
@@ -101,13 +100,17 @@ class AppointmentListView(generics.ListAPIView, CacheMixin):
         else:
             return base_queryset.all().order_by('-booked_at')
 
-    @method_decorator(cache_page(60))
-    @method_decorator(vary_on_headers('Authorization'))
     def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    # NOTE: perform_create does not belong on a ListAPIView; removed the stale
-    # override that called cache.delete_pattern() here (it never executed).
+        # Manual caching - cache the serialized data, not the Response object
+        cache_key = f"{self.cache_key_prefix}:{request.user.id}:{request.GET.urlencode()}"
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return Response(cached_data)
+        
+        response = super().get(request, *args, **kwargs)
+        cache.set(cache_key, response.data, self.cache_timeout)
+        return response
 
 
 class AppointmentDetailView(generics.RetrieveAPIView, CacheMixin):
@@ -380,6 +383,31 @@ class StaffListView(generics.ListAPIView):
 
 
 # ==================== BLOG VIEWS ====================
+class BlogPostLatestView(generics.ListAPIView, CacheMixin):
+    serializer_class = BlogPostListSerializer
+    permission_classes = [permissions.AllowAny]
+    cache_timeout = 300
+    cache_key_prefix = 'blog_latest'
+
+    def get_queryset(self):
+        limit = self.request.query_params.get('limit', 6)
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 6
+
+        return BlogPost.objects.filter(published=True).select_related(
+            'author'
+        ).only(
+            'id', 'title', 'slug', 'description', 'featured_image',
+            'image_1', 'image_2', 'published_date', 'created_at',
+            'author__fullname', 'author__role',
+        ).order_by('-published_date', '-created_at')[:limit]
+
+    @method_decorator(cache_page(300))
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
 
 class BlogPostListCreateView(generics.ListCreateAPIView, CacheMixin):
     parser_classes   = [MultiPartParser, FormParser, JSONParser]
@@ -404,13 +432,6 @@ class BlogPostListCreateView(generics.ListCreateAPIView, CacheMixin):
         if self.request.method == 'POST':
             return [permissions.IsAuthenticated(), IsRole()]
         return [permissions.AllowAny()]
-
-    # FIX: Double-caching removed. The original GET override called
-    # @cache_page (HTTP-level) AND manual get_cached_data/set_cached_data
-    # (data-level) simultaneously. Every cache HIT deserialised the data twice
-    # and every cache MISS stored it twice under different keys that were
-    # invalidated independently — so one layer could go stale while the other
-    # was fresh. @cache_page alone is sufficient here.
     @method_decorator(cache_page(300))
     @method_decorator(vary_on_headers('Authorization'))
     def get(self, request, *args, **kwargs):

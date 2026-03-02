@@ -194,34 +194,27 @@ class BlogPostListSerializer(serializers.ModelSerializer):
         ]
     
     def get_featured_image_url(self, obj):
-        if obj.featured_image and obj.featured_image.name:
-            # Return full S3 URL
+        if obj.featured_image:
             try:
-                return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/media/{obj.featured_image.name}"
-            except:
-                # Fallback if settings not available
-                if hasattr(obj.featured_image, 'url'):
-                    return obj.featured_image.url
+                # Use the .url property - this works with S3Boto3Storage
+                return obj.featured_image.url
+            except Exception:
                 return None
         return None
     
     def get_image_1_url(self, obj):
-        if obj.image_1 and obj.image_1.name:
+        if obj.image_1:
             try:
-                return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/media/{obj.image_1.name}"
-            except:
-                if hasattr(obj.image_1, 'url'):
-                    return obj.image_1.url
+                return obj.image_1.url
+            except Exception:
                 return None
         return None
     
     def get_image_2_url(self, obj):
-        if obj.image_2 and obj.image_2.name:
+        if obj.image_2:
             try:
-                return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/media/{obj.image_2.name}"
-            except:
-                if hasattr(obj.image_2, 'url'):
-                    return obj.image_2.url
+                return obj.image_2.url
+            except Exception:
                 return None
         return None
 

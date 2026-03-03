@@ -153,12 +153,19 @@ class AppointmentSerializer(serializers.ModelSerializer):
     assigned_doctor  = serializers.SerializerMethodField()
     assigned_nurse   = serializers.SerializerMethodField()
     assigned_lab     = serializers.SerializerMethodField()
+    
+    # Add these fields to explicitly include the data
+    test_requests_data = serializers.SerializerMethodField()
+    vital_requests_data = serializers.SerializerMethodField()
 
     class Meta:
         model  = Appointment
-        fields = ['id', 'patient', 'patient_id', 'name', 'age', 'sex',
-                  'message', 'address', 'booked_at', 'doctor', 'status',
-                  'assignments', 'assigned_doctor', 'assigned_nurse', 'assigned_lab']
+        fields = [
+            'id', 'patient', 'patient_id', 'name', 'age', 'sex',
+            'message', 'address', 'booked_at', 'doctor', 'status',
+            'assignments', 'assigned_doctor', 'assigned_nurse', 'assigned_lab',
+            'test_requests_data', 'vital_requests_data'
+        ]
         read_only_fields = ['booked_at', 'status', 'doctor']
 
     def get_assigned_doctor(self, obj):
@@ -172,28 +179,43 @@ class AppointmentSerializer(serializers.ModelSerializer):
     def get_assigned_lab(self, obj):
         a = obj.assignments.filter(role='LAB').first()
         return AssignmentSerializer(a).data if a else None
+    
+    def get_test_requests_data(self, obj):
+        requests = obj.test_requests.all()
+        return TestRequestSerializer(requests, many=True).data
+    
+    def get_vital_requests_data(self, obj):
+        requests = obj.vital_requests.all()
+        return VitalRequestSerializer(requests, many=True).data
 
+    # Keep to_representation but make it safer
     def to_representation(self, instance):
         rep = super().to_representation(instance)
-        if instance.test_requests.exists():
-            rep['test_requests'] = TestRequestSerializer(
-                instance.test_requests.all(), many=True).data
-        if instance.vital_requests.exists():
-            rep['vital_requests'] = VitalRequestSerializer(
-                instance.vital_requests.all(), many=True).data
-        vr = instance.vital_requests.last()
-        if vr and vr.vitals_entries.exists():
-            rep['vitals'] = VitalsSerializer(vr.vitals_entries.last()).data
-        lr_data = []
+        
+        # Add the data we already have from serializer methods
+        rep['test_requests'] = rep.get('test_requests_data', [])
+        rep['vital_requests'] = rep.get('vital_requests_data', [])
+        
+        # Add vitals if available
+        vital_request = instance.vital_requests.last()
+        if vital_request and vital_request.vitals_entries.exists():
+            rep['vitals'] = VitalsSerializer(vital_request.vitals_entries.last()).data
+        
+        # Add lab results
+        lab_results_data = []
         for tr in instance.test_requests.all():
             if tr.lab_results.exists():
-                lr_data.extend(LabResultSerializer(tr.lab_results.all(), many=True).data)
-        if lr_data:
-            rep['lab_results'] = lr_data
+                lab_results_data.extend(
+                    LabResultSerializer(tr.lab_results.all(), many=True).data
+                )
+        if lab_results_data:
+            rep['lab_results'] = lab_results_data
+        
+        # Add medical report
         if hasattr(instance, 'medical_report'):
             rep['medical_report'] = MedicalReportSerializer(instance.medical_report).data
+        
         return rep
-
 
 class AppointmentDetailSerializer(serializers.ModelSerializer):
     patient        = ProfileSerializer(read_only=True)
@@ -206,10 +228,6 @@ class AppointmentDetailSerializer(serializers.ModelSerializer):
         model  = Appointment
         fields = '__all__'
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# BLOG SERIALIZERS
-# ──────────────────────────────────────────────────────────────────────────────
 
 class SubheadingSerializer(serializers.Serializer):
     id           = serializers.IntegerField(read_only=True)

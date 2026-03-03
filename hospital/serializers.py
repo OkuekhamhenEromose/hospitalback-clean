@@ -71,16 +71,29 @@ def _safe_url(image_field) -> str | None:
 # ──────────────────────────────────────────────────────────────────────────────
 # HOSPITAL SERIALIZERS
 # ──────────────────────────────────────────────────────────────────────────────
-
 class TestRequestSerializer(serializers.ModelSerializer):
     assigned_to = serializers.PrimaryKeyRelatedField(
         queryset=Profile.objects.all(), required=False, allow_null=True,
     )
+    
+    # Add this to ensure we get full details when needed
+    assigned_to_details = serializers.SerializerMethodField()
 
     class Meta:
         model = TestRequest
         fields = '__all__'
         read_only_fields = ['requested_by', 'created_at', 'updated_at']
+    
+    def get_assigned_to_details(self, obj):
+        if obj.assigned_to:
+            return StaffProfileSerializer(obj.assigned_to).data
+        return None
+    
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # Include the details in the response
+        rep['assigned_to'] = self.get_assigned_to_details(instance)
+        return rep
 
 
 class VitalRequestSerializer(serializers.ModelSerializer):

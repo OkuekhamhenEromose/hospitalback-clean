@@ -94,26 +94,34 @@ class AppointmentListView(generics.ListAPIView, CacheMixin):
             Prefetch('assignments',
                      queryset=Assignment.objects.select_related('staff', 'assigned_by')),
             'medical_report',
-        )
+        ).order_by('-booked_at')
+        
         if profile.role == 'PATIENT':
-            return base_qs.filter(patient=profile).order_by('-booked_at')
+            return base_qs.filter(patient=profile)
         if profile.role == 'DOCTOR':
-            return base_qs.filter(doctor=profile).order_by('-booked_at')
-        return base_qs.all().order_by('-booked_at')
+            return base_qs.filter(doctor=profile)
+        return base_qs
 
-    # FIX-1: No cache_page decorator. Manual cache on response.data only.
     def get(self, request, *args, **kwargs):
-        cache_key = f"{self.cache_key_prefix}:{request.user.id}:{request.GET.urlencode()}"
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return Response(cached)
-        response = super().get(request, *args, **kwargs)
-        if response.status_code == 200:
-            try:
-                cache.set(cache_key, response.data, self.cache_timeout)
-            except Exception as e:
-                logger.warning('AppointmentListView cache.set failed: %s', e)
-        return response
+        try:
+            cache_key = f"{self.cache_key_prefix}:{request.user.id}:{request.GET.urlencode()}"
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+            
+            response = super().get(request, *args, **kwargs)
+            
+            if response.status_code == 200:
+                try:
+                    cache.set(cache_key, response.data, self.cache_timeout)
+                except Exception as e:
+                    logger.warning('AppointmentListView cache.set failed: %s', e)
+            
+            return response
+        except Exception as e:
+            logger.error(f'AppointmentListView failed: {e}')
+            # Return empty list instead of crashing
+            return Response([])
 
 
 class AppointmentDetailView(generics.RetrieveAPIView, CacheMixin):

@@ -190,32 +190,57 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
     # Keep to_representation but make it safer
     def to_representation(self, instance):
-        rep = super().to_representation(instance)
+        try:
+            rep = super().to_representation(instance)
         
-        # Add the data we already have from serializer methods
-        rep['test_requests'] = rep.get('test_requests_data', [])
-        rep['vital_requests'] = rep.get('vital_requests_data', [])
+            # Add the data we already have from serializer methods
+            rep['test_requests'] = rep.get('test_requests_data', [])
+            rep['vital_requests'] = rep.get('vital_requests_data', [])
+
+            try:
+                # Add vitals if available
+                vital_request = instance.vital_requests.last() if hasattr(instance, 'vital_requests') else None
+                if vital_request and hasattr(vital_request, 'vitals_entries') and vital_request.vitals_entries.exists():
+                    rep['vitals'] = VitalsSerializer(vital_request.vitals_entries.last()).data
         
-        # Add vitals if available
-        vital_request = instance.vital_requests.last()
-        if vital_request and vital_request.vitals_entries.exists():
-            rep['vitals'] = VitalsSerializer(vital_request.vitals_entries.last()).data
+            except Exception as e:
+                logger.warning(f"Error adding vitals to appointment {instance.id}: {e}")
         
-        # Add lab results
-        lab_results_data = []
-        for tr in instance.test_requests.all():
-            if tr.lab_results.exists():
-                lab_results_data.extend(
-                    LabResultSerializer(tr.lab_results.all(), many=True).data
-                )
-        if lab_results_data:
-            rep['lab_results'] = lab_results_data
+            try:
+                # Add lab results
+                lab_results_data = []
+                if hasattr(instance, 'test_requests'):
+                    for tr in instance.test_requests.all():
+                        if tr.lab_results.exists():
+                            lab_results_data.extend(
+                                LabResultSerializer(tr.lab_results.all(), many=True).data
+                                    )
+                if lab_results_data:
+                    rep['lab_results'] = lab_results_data
+            except Exception as e:
+                logger.warning(f"Error adding lab results to appointment {instance.id}: {e}") 
+            # Safely add medical report
+            try:
+                if hasattr(instance, 'medical_report'):
+                    rep['medical_report'] = MedicalReportSerializer(instance.medical_report).data
+
+            except Exception as e:
+                logger.warning(f"Error adding medical report to appointment {instance.id}: {e}")
         
-        # Add medical report
-        if hasattr(instance, 'medical_report'):
-            rep['medical_report'] = MedicalReportSerializer(instance.medical_report).data
-        
-        return rep
+            return rep
+        except Exception as e:
+            logger.error(f"Critical error in to_representation for appointment {instance.id}: {e}")
+            # Return a minimal representation to prevent frontend crash
+            return {
+                'id': instance.id,
+                'name': instance.name,
+                'age': instance.age,
+                'sex': instance.sex,
+                'status': instance.status,
+                'booked_at': instance.booked_at,
+                'test_requests': [],
+                'vital_requests': []
+            }
 
 class AppointmentDetailSerializer(serializers.ModelSerializer):
     patient        = ProfileSerializer(read_only=True)

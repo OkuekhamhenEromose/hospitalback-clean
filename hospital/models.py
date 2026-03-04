@@ -78,6 +78,8 @@ class Appointment(models.Model):
             models.Index(fields=['patient', 'status']),
             models.Index(fields=['doctor', 'status']),
             models.Index(fields=['booked_at']),  # For date range queries
+            models.Index(fields=['patient', '-booked_at']),
+            models.Index(fields=['doctor', '-booked_at']),
         ]
 
     def __str__(self):
@@ -128,6 +130,7 @@ class TestRequest(models.Model):
             models.Index(fields=['status', 'created_at']),
             models.Index(fields=['appointment', 'status']),
             models.Index(fields=['assigned_to', 'status']),
+            models.Index(fields=['appointment', '-created_at']),
         ]
 
     def assign_lab_scientist(self):
@@ -172,6 +175,7 @@ class VitalRequest(models.Model):
             models.Index(fields=['status', 'created_at']),
             models.Index(fields=['appointment', 'status']),
             models.Index(fields=['assigned_to', 'status']),
+            models.Index(fields=['appointment', '-created_at']),
         ]
 
     def assign_nurse(self):
@@ -271,6 +275,7 @@ class BlogPost(models.Model):
             models.Index(fields=['slug']),
             models.Index(fields=['author', 'published']),
             models.Index(fields=['-created_at']),
+            models.Index(fields=['title']),
         ]
 
     def __str__(self):

@@ -1,32 +1,5 @@
-# hospital/serializers.py
-#
-# ══════════════════════════════════════════════════════════════════════════════
-# FIX: Hardcoded S3 URL construction replaced with storage backend .url
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# The original BlogPostSerializer and StaffProfileSerializer built image URLs
-# as f-strings:
-#
-#   f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}
-#     .amazonaws.com/media/{obj.featured_image.name}"
-#
-# These manually constructed URLs:
-#   1. Bypass the storage backend entirely.
-#   2. Are always UNSIGNED — returns 403 against a private bucket (AWS default
-#      since April 2023, and required here because eu-north-1 enforces it).
-#   3. Break in local dev (no S3 bucket, URLs point to nothing).
-#   4. Stop working silently if bucket/region settings change.
-#
-# Fix: call field.url — S3Boto3Storage returns a pre-signed URL (because
-# AWS_QUERYSTRING_AUTH = True is now set in settings.py). FileSystemStorage
-# returns a local /media/... URL for dev. Either way the caller gets a
-# working URL with zero URL-construction logic in the serializer.
-#
-# The single shared helper _safe_url() is used everywhere to keep the
-# try/except error handling in one place.
-# ══════════════════════════════════════════════════════════════════════════════
-
 from rest_framework import serializers
+from django.core.cache import cache
 from .models import (
     Appointment, Vitals, LabResult, MedicalReport, BlogPost,
     TestRequest, VitalRequest, Assignment,
@@ -204,6 +177,10 @@ class AppointmentSerializer(serializers.ModelSerializer):
     # Keep to_representation but make it safer
     def to_representation(self, instance):
         try:
+            cache_key = f"appointment_rep_{instance.id}"
+            cached = cache.get(cache_key)
+            if cached:
+                return cached
             rep = super().to_representation(instance)
         
             # Add the data we already have from serializer methods
@@ -211,11 +188,9 @@ class AppointmentSerializer(serializers.ModelSerializer):
             rep['vital_requests'] = rep.get('vital_requests_data', [])
 
             try:
-                # Add vitals if available
                 vital_request = instance.vital_requests.last() if hasattr(instance, 'vital_requests') else None
                 if vital_request and hasattr(vital_request, 'vitals_entries') and vital_request.vitals_entries.exists():
                     rep['vitals'] = VitalsSerializer(vital_request.vitals_entries.last()).data
-        
             except Exception as e:
                 logger.warning(f"Error adding vitals to appointment {instance.id}: {e}")
         
@@ -236,9 +211,10 @@ class AppointmentSerializer(serializers.ModelSerializer):
             try:
                 if hasattr(instance, 'medical_report'):
                     rep['medical_report'] = MedicalReportSerializer(instance.medical_report).data
-
             except Exception as e:
                 logger.warning(f"Error adding medical report to appointment {instance.id}: {e}")
+            # Cache for 5 minutes
+            cache.set(cache_key, rep, 300)
         
             return rep
         except Exception as e:
@@ -254,6 +230,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
                 'test_requests': [],
                 'vital_requests': []
             }
+
 
 class AppointmentDetailSerializer(serializers.ModelSerializer):
     patient        = ProfileSerializer(read_only=True)

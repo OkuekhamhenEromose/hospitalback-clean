@@ -83,17 +83,45 @@ class AppointmentListView(generics.ListAPIView, CacheMixin):
         profile = self.request.user.profile
         base_qs = Appointment.objects.select_related(
             'patient', 'patient__user',
-            'doctor',  'doctor__user',
+            'doctor', 'doctor__user',
         ).prefetch_related(
-            Prefetch('test_requests',
-                     queryset=TestRequest.objects.select_related('assigned_to')
-                                                 .prefetch_related('lab_results')),
-            Prefetch('vital_requests',
-                     queryset=VitalRequest.objects.select_related('assigned_to')
-                                                  .prefetch_related('vitals_entries')),
-            Prefetch('assignments',
-                     queryset=Assignment.objects.select_related('staff', 'assigned_by')),
-            'medical_report',
+            Prefetch(
+                'test_requests',
+                queryset=TestRequest.objects.select_related('assigned_to')
+                .only('id', 'appointment_id', 'tests', 'note', 'status', 'created_at', 'assigned_to_id')
+                .prefetch_related(
+                    Prefetch(
+                        'lab_results',
+                        queryset=LabResult.objects.only(
+                            'id', 'test_request_id', 'test_name', 'result', 
+                            'units', 'reference_range', 'recorded_at'
+                        )
+                    )
+                )
+            ),
+            Prefetch(
+                'vital_requests',
+                queryset=VitalRequest.objects.select_related('assigned_to')
+                .only('id', 'appointment_id', 'note', 'status', 'created_at', 'assigned_to_id')
+                .prefetch_related(
+                    Prefetch(
+                        'vitals_entries',
+                        queryset=Vitals.objects.only(
+                            'id', 'vital_request_id', 'blood_pressure', 'pulse_rate',
+                            'body_temperature', 'respiration_rate', 'recorded_at'
+                        )
+                    )
+                )
+            ),
+            Prefetch(
+                'assignments',
+                queryset=Assignment.objects.select_related('staff', 'assigned_by')
+                .only('id', 'appointment_id', 'staff_id', 'role', 'assigned_by_id', 'assigned_at', 'notes')
+            ),
+            Prefetch('medical_report', queryset=MedicalReport.objects.only(
+                'id', 'appointment_id', 'medical_condition', 'drug_prescription',
+                'advice', 'next_appointment', 'created_at'
+            )),
         ).order_by('-booked_at')
         
         if profile.role == 'PATIENT':
@@ -101,27 +129,6 @@ class AppointmentListView(generics.ListAPIView, CacheMixin):
         if profile.role == 'DOCTOR':
             return base_qs.filter(doctor=profile)
         return base_qs
-
-    def get(self, request, *args, **kwargs):
-        try:
-            cache_key = f"{self.cache_key_prefix}:{request.user.id}:{request.GET.urlencode()}"
-            cached = cache.get(cache_key)
-            if cached is not None:
-                return Response(cached)
-            
-            response = super().get(request, *args, **kwargs)
-            
-            if response.status_code == 200:
-                try:
-                    cache.set(cache_key, response.data, self.cache_timeout)
-                except Exception as e:
-                    logger.warning('AppointmentListView cache.set failed: %s', e)
-            
-            return response
-        except Exception as e:
-            logger.error(f'AppointmentListView failed: {e}')
-            # Return empty list instead of crashing
-            return Response([])
 
 
 class AppointmentDetailView(generics.RetrieveAPIView, CacheMixin):

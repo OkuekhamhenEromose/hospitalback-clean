@@ -83,13 +83,25 @@ TEMPLATES = [
 ]
 
 # ========== DATABASE ==========
+# Database connection pooling
 DATABASES = {
     'default': dj_database_url.config(
         default=config('DATABASE_URL', default='sqlite:///db.sqlite3'),
-        conn_max_age=600,
-        conn_health_checks=True,
+        conn_max_age=600,  # Keep connections alive for 10 minutes
+        conn_health_checks=True,  # Check connection health
+        ssl_require=not DEBUG,  # Require SSL in production
     )
 }
+
+# Add database optimizations
+if not DEBUG:
+    DATABASES['default']['OPTIONS'] = {
+        'connect_timeout': 10,
+        'keepalives': 1,
+        'keepalives_idle': 30,
+        'keepalives_interval': 10,
+        'keepalives_count': 5,
+    }
 
 # ========== CACHE ==========
 REDIS_URL = config('REDIS_URL', default='')
@@ -109,9 +121,13 @@ if REDIS_URL:
                 'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
                 'COMPRESS_MIN_LEN': 1024,
                 'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+                'PARSER_CLASS': 'redis.connection.HiredisParser',
+                'CONNECTION_POOL_CLASS': 'redis.BlockingConnectionPool',
+                'PICKLE_VERSION': -1,
             },
             'KEY_PREFIX': 'hospital',
             'TIMEOUT': 300,
+            'VERSION': 1,
         }
     }
     SESSION_ENGINE = 'django.contrib.sessions.backends.cache'

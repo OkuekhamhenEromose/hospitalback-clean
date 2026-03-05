@@ -85,22 +85,25 @@ TEMPLATES = [
 ]
 
 # ========== DATABASE ==========
-# Get DATABASE_URL from environment (Render sets this automatically)
-# For local development, you can set it in .env file
 DATABASE_URL = config('DATABASE_URL', default='sqlite:///db.sqlite3')
 
-# Parse database URL with dj_database_url
+# Parse database URL - WITHOUT ssl_require parameter
 DATABASES = {
-    'default': dj_database_url.config(
-        default=DATABASE_URL,
+    'default': dj_database_url.parse(
+        DATABASE_URL,
         conn_max_age=600,
         conn_health_checks=True,
-        ssl_require=True,  # Always require SSL for PostgreSQL
     )
 }
 
-# Log which database we're using (helpful for debugging)
+# Add SSL options ONLY for PostgreSQL
 db_engine = DATABASES['default']['ENGINE']
+if 'postgresql' in db_engine:
+    DATABASES['default']['OPTIONS'] = {
+        'sslmode': 'require'
+    }
+
+# Log which database we're using
 logger.info(f"📊 Using database engine: {db_engine}")
 if 'sqlite' in db_engine:
     logger.info(f"   SQLite database path: {DATABASES['default']['NAME']}")
@@ -109,14 +112,16 @@ else:
 
 # Add PostgreSQL optimizations for production
 if not DEBUG and 'postgresql' in db_engine:
-    DATABASES['default']['OPTIONS'] = {
+    if 'OPTIONS' not in DATABASES['default']:
+        DATABASES['default']['OPTIONS'] = {}
+    DATABASES['default']['OPTIONS'].update({
         'connect_timeout': 10,
         'keepalives': 1,
         'keepalives_idle': 30,
         'keepalives_interval': 10,
         'keepalives_count': 5,
-        'options': '-c statement_timeout=30s',  # Prevent long-running queries
-    }
+        'options': '-c statement_timeout=30s',
+    })
 
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')

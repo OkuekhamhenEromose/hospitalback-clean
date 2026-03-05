@@ -1,33 +1,3 @@
-# hospital/views.py
-#
-# ══════════════════════════════════════════════════════════════════════════════
-# FIXES IN THIS FILE
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# FIX-1 ── Removed ALL @method_decorator(cache_page()) from every view.
-#
-#   Root cause (confirmed in Render traceback at 07:10:20):
-#     Django's cache_page middleware intercepts the view response via
-#     add_post_render_callback(). DRF's Response extends SimpleTemplateResponse,
-#     so Django treats it like a template response and tries to cache the whole
-#     object. Redis is configured with JSONSerializer → json.dumps(Response)
-#     raises TypeError: Object of type Response is not JSON serializable.
-#     This turned EVERY cached blog/appointment GET into a 500.
-#
-#   Fix: manual caching only. cache.set() is called on response.data, which
-#   is already a plain dict/list → safe to JSON-serialize. Cache failures are
-#   caught and logged; a slow response is always better than a 500.
-#
-# FIX-2 ── Removed duplicate BlogPostLatestView class definition.
-#   The original file defined BlogPostLatestView twice. Python silently uses
-#   the last definition; the first is dead code. Only one definition remains.
-#
-# FIX-3 ── BlogPostLatestView.get() uses manual caching (no cache_page).
-#   The /blog/latest/ endpoint is AllowAny. cache_page + JWTAuthentication
-#   interaction was causing 401s even on AllowAny views when an expired token
-#   was present in the request headers.
-# ══════════════════════════════════════════════════════════════════════════════
-
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -56,11 +26,6 @@ from api.settings import safe_cache_delete_pattern
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# APPOINTMENTS
-# ──────────────────────────────────────────────────────────────────────────────
 
 class AppointmentCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsRole]

@@ -354,220 +354,220 @@ class BlogPost(models.Model):
 
         self.subheadings = structured[:6]
 
-# ==================== SIMPLE IMAGE UPLOAD FUNCTION ====================
+    # ==================== SIMPLE IMAGE UPLOAD FUNCTION ====================
 
-# def upload_image_to_s3_simple(image_field, blog_post, field_name):
-#     """Simple, reliable image upload to S3 - FIXED VERSION"""
-#     import boto3
-#     from django.conf import settings
-#     import logging
-#     import os
+def upload_image_to_s3_simple(image_field, blog_post, field_name):
+    """Simple, reliable image upload to S3 - FIXED VERSION"""
+    import boto3
+    from django.conf import settings
+    import logging
+    import os
     
-#     logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
     
-#     if not image_field or not hasattr(image_field, 'name') or not image_field.name:
-#         logger.warning(f"[SKIP] No image field for {field_name}")
-#         return False
+    if not image_field or not hasattr(image_field, 'name') or not image_field.name:
+        logger.warning(f"[SKIP] No image field for {field_name}")
+        return False
     
-#     try:
-#         # Setup S3 client
-#         s3 = boto3.client(
-#             's3',
-#             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-#             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-#             region_name=settings.AWS_S3_REGION_NAME
-#         )
+    try:
+        # Setup S3 client
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION_NAME
+        )
         
-#         bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+        bucket_name = settings.AWS_STORAGE_BUCKET_NAME
         
-#         # IMPORTANT: Get the actual file path from Django storage
-#         # For default_storage, get the file path relative to media root
-#         from django.core.files.storage import default_storage
+        # IMPORTANT: Get the actual file path from Django storage
+        # For default_storage, get the file path relative to media root
+        from django.core.files.storage import default_storage
         
-#         # Extract the path relative to media/ directory
-#         if image_field.name.startswith('blog_images/'):
-#             s3_key = f"media/{image_field.name}"
-#         else:
-#             s3_key = f"media/blog_images/{os.path.basename(image_field.name)}"
+        # Extract the path relative to media/ directory
+        if image_field.name.startswith('blog_images/'):
+            s3_key = f"media/{image_field.name}"
+        else:
+            s3_key = f"media/blog_images/{os.path.basename(image_field.name)}"
         
-#         logger.info(f"[UPLOAD] Processing {field_name}: {image_field.name} -> S3 Key: {s3_key}")
+        logger.info(f"[UPLOAD] Processing {field_name}: {image_field.name} -> S3 Key: {s3_key}")
         
-#         # Check if already exists in S3 (skip if it's an actual image)
-#         try:
-#             existing = s3.head_object(Bucket=bucket_name, Key=s3_key)
-#             metadata = existing.get('Metadata', {})
-#             if metadata.get('actual_image') == 'true':
-#                 logger.info(f"[SKIP] Already exists in S3 with actual_image=true: {s3_key}")
-#                 return True
-#         except:
-#             pass  # File doesn't exist, continue upload
+        # Check if already exists in S3 (skip if it's an actual image)
+        try:
+            existing = s3.head_object(Bucket=bucket_name, Key=s3_key)
+            metadata = existing.get('Metadata', {})
+            if metadata.get('actual_image') == 'true':
+                logger.info(f"[SKIP] Already exists in S3 with actual_image=true: {s3_key}")
+                return True
+        except:
+            pass  # File doesn't exist, continue upload
         
-#         # Get the actual file from Django storage
-#         if default_storage.exists(image_field.name):
-#             logger.info(f"[FOUND] File exists in default storage: {image_field.name}")
+        # Get the actual file from Django storage
+        if default_storage.exists(image_field.name):
+            logger.info(f"[FOUND] File exists in default storage: {image_field.name}")
             
-#             # Open file from Django storage
-#             with default_storage.open(image_field.name, 'rb') as f:
-#                 file_content = f.read()
-#                 file_size = len(file_content)
+            # Open file from Django storage
+            with default_storage.open(image_field.name, 'rb') as f:
+                file_content = f.read()
+                file_size = len(file_content)
                 
-#                 # Determine content type from filename
-#                 filename = image_field.name.lower()
-#                 if filename.endswith('.png'):
-#                     content_type = 'image/png'
-#                 elif filename.endswith('.webp'):
-#                     content_type = 'image/webp'
-#                 elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
-#                     content_type = 'image/jpeg'
-#                 else:
-#                     content_type = 'application/octet-stream'
+                # Determine content type from filename
+                filename = image_field.name.lower()
+                if filename.endswith('.png'):
+                    content_type = 'image/png'
+                elif filename.endswith('.webp'):
+                    content_type = 'image/webp'
+                elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
+                    content_type = 'image/jpeg'
+                else:
+                    content_type = 'application/octet-stream'
                 
-#                 # Upload to S3
-#                 logger.info(f"[UPLOADING] {s3_key} ({file_size} bytes)...")
+                # Upload to S3
+                logger.info(f"[UPLOADING] {s3_key} ({file_size} bytes)...")
                 
-#                 s3.put_object(
-#                     Bucket=bucket_name,
-#                     Key=s3_key,
-#                     Body=file_content,
-#                     ContentType=content_type,
-#                     ACL='public-read',
-#                     Metadata={
-#                         'blog_id': str(blog_post.id),
-#                         'blog_title': blog_post.title[:100],
-#                         'field': field_name,
-#                         'actual_image': 'true',
-#                         'uploaded_at': datetime.now().isoformat(),
-#                         'upload_method': 'django_signal'
-#                     }
-#                 )
+                s3.put_object(
+                    Bucket=bucket_name,
+                    Key=s3_key,
+                    Body=file_content,
+                    ContentType=content_type,
+                    ACL='public-read',
+                    Metadata={
+                        'blog_id': str(blog_post.id),
+                        'blog_title': blog_post.title[:100],
+                        'field': field_name,
+                        'actual_image': 'true',
+                        'uploaded_at': datetime.now().isoformat(),
+                        'upload_method': 'django_signal'
+                    }
+                )
                 
-#                 logger.info(f"[SUCCESS] Uploaded to S3: {s3_key}")
-#                 return True
-#         else:
-#             logger.warning(f"[MISSING] File not in default storage: {image_field.name}")
+                logger.info(f"[SUCCESS] Uploaded to S3: {s3_key}")
+                return True
+        else:
+            logger.warning(f"[MISSING] File not in default storage: {image_field.name}")
             
-#             # Try to get file from the ImageField directly
-#             try:
-#                 logger.info(f"[ATTEMPT] Trying to read from ImageField directly...")
+            # Try to get file from the ImageField directly
+            try:
+                logger.info(f"[ATTEMPT] Trying to read from ImageField directly...")
                 
-#                 # Reset file pointer to beginning
-#                 if hasattr(image_field, 'file') and image_field.file:
-#                     image_field.file.seek(0)
-#                     file_content = image_field.file.read()
+                # Reset file pointer to beginning
+                if hasattr(image_field, 'file') and image_field.file:
+                    image_field.file.seek(0)
+                    file_content = image_field.file.read()
                     
-#                     # Determine content type
-#                     filename = image_field.name.lower()
-#                     if filename.endswith('.png'):
-#                         content_type = 'image/png'
-#                     elif filename.endswith('.webp'):
-#                         content_type = 'image/webp'
-#                     elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
-#                         content_type = 'image/jpeg'
-#                     else:
-#                         content_type = 'application/octet-stream'
+                    # Determine content type
+                    filename = image_field.name.lower()
+                    if filename.endswith('.png'):
+                        content_type = 'image/png'
+                    elif filename.endswith('.webp'):
+                        content_type = 'image/webp'
+                    elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
+                        content_type = 'image/jpeg'
+                    else:
+                        content_type = 'application/octet-stream'
                     
-#                     # Upload to S3
-#                     logger.info(f"[UPLOADING-DIRECT] {s3_key} ({len(file_content)} bytes)...")
+                    # Upload to S3
+                    logger.info(f"[UPLOADING-DIRECT] {s3_key} ({len(file_content)} bytes)...")
                     
-#                     s3.put_object(
-#                         Bucket=bucket_name,
-#                         Key=s3_key,
-#                         Body=file_content,
-#                         ContentType=content_type,
-#                         ACL='public-read',
-#                         Metadata={
-#                             'blog_id': str(blog_post.id),
-#                             'blog_title': blog_post.title[:100],
-#                             'field': field_name,
-#                             'actual_image': 'true',
-#                             'uploaded_at': datetime.now().isoformat(),
-#                             'upload_method': 'direct_imagefield'
-#                         }
-#                     )
+                    s3.put_object(
+                        Bucket=bucket_name,
+                        Key=s3_key,
+                        Body=file_content,
+                        ContentType=content_type,
+                        ACL='public-read',
+                        Metadata={
+                            'blog_id': str(blog_post.id),
+                            'blog_title': blog_post.title[:100],
+                            'field': field_name,
+                            'actual_image': 'true',
+                            'uploaded_at': datetime.now().isoformat(),
+                            'upload_method': 'direct_imagefield'
+                        }
+                    )
                     
-#                     logger.info(f"[SUCCESS] Uploaded from ImageField: {s3_key}")
-#                     return True
+                    logger.info(f"[SUCCESS] Uploaded from ImageField: {s3_key}")
+                    return True
                     
-#             except Exception as e:
-#                 logger.error(f"[ERROR] Cannot read from ImageField: {str(e)}")
-#                 return False
+            except Exception as e:
+                logger.error(f"[ERROR] Cannot read from ImageField: {str(e)}")
+                return False
                 
-#     except Exception as e:
-#         logger.error(f"[ERROR] Failed to upload {image_field.name if image_field else 'unknown'}: {str(e)}")
-#         import traceback
-#         logger.error(f"[TRACEBACK] {traceback.format_exc()}")
-#         return False
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to upload {image_field.name if image_field else 'unknown'}: {str(e)}")
+        import traceback
+        logger.error(f"[TRACEBACK] {traceback.format_exc()}")
+        return False
 
-# # ==================== SINGLE SIGNAL HANDLER ====================
+# ==================== SINGLE SIGNAL HANDLER ====================
 
-# @receiver(post_save, sender=BlogPost)
-# def handle_blog_post_save(sender, instance, created, **kwargs):
-#     """SINGLE signal handler for uploading images to S3 - FIXED VERSION"""
-#     import logging
-#     logger = logging.getLogger(__name__)
+@receiver(post_save, sender=BlogPost)
+def handle_blog_post_save(sender, instance, created, **kwargs):
+    """SINGLE signal handler for uploading images to S3 - FIXED VERSION"""
+    import logging
+    logger = logging.getLogger(__name__)
     
-#     if kwargs.get('raw', False) or kwargs.get('update_fields'):
-#         return
+    if kwargs.get('raw', False) or kwargs.get('update_fields'):
+        return
     
-#     logger.info(f"📝 Processing images for blog post: {instance.id} - {instance.title}")
-#     logger.info(f"   Created: {created}, Update fields: {kwargs.get('update_fields')}")
+    logger.info(f"📝 Processing images for blog post: {instance.id} - {instance.title}")
+    logger.info(f"   Created: {created}, Update fields: {kwargs.get('update_fields')}")
     
-#     # Check which image fields need processing
-#     image_fields_to_process = []
+    # Check which image fields need processing
+    image_fields_to_process = []
     
-#     # For new posts, process all images
-#     if created:
-#         logger.info(f"📸 New post - will process all images")
-#         image_fields_to_process = [
-#             ('featured_image', instance.featured_image),
-#             ('image_1', instance.image_1),
-#             ('image_2', instance.image_2)
-#         ]
-#     else:
-#         # For updates, check which fields were updated
-#         update_fields = kwargs.get('update_fields', set())
-#         logger.info(f"🔄 Update fields detected: {update_fields}")
+    # For new posts, process all images
+    if created:
+        logger.info(f"📸 New post - will process all images")
+        image_fields_to_process = [
+            ('featured_image', instance.featured_image),
+            ('image_1', instance.image_1),
+            ('image_2', instance.image_2)
+        ]
+    else:
+        # For updates, check which fields were updated
+        update_fields = kwargs.get('update_fields', set())
+        logger.info(f"🔄 Update fields detected: {update_fields}")
         
-#         if update_fields:
-#             # Convert to lowercase for comparison
-#             update_fields_lower = {f.lower() for f in update_fields}
+        if update_fields:
+            # Convert to lowercase for comparison
+            update_fields_lower = {f.lower() for f in update_fields}
             
-#             if 'featured_image' in update_fields_lower and instance.featured_image:
-#                 image_fields_to_process.append(('featured_image', instance.featured_image))
-#             if 'image_1' in update_fields_lower and instance.image_1:
-#                 image_fields_to_process.append(('image_1', instance.image_1))
-#             if 'image_2' in update_fields_lower and instance.image_2:
-#                 image_fields_to_process.append(('image_2', instance.image_2))
-#         else:
-#             # If no specific update fields, check all images
-#             logger.info(f"🔍 No specific update fields - checking all images")
-#             for field_name, image_field in [
-#                 ('featured_image', instance.featured_image),
-#                 ('image_1', instance.image_1),
-#                 ('image_2', instance.image_2)
-#             ]:
-#                 if image_field and image_field.name:
-#                     logger.info(f"   Will process {field_name}: {image_field.name}")
-#                     image_fields_to_process.append((field_name, image_field))
+            if 'featured_image' in update_fields_lower and instance.featured_image:
+                image_fields_to_process.append(('featured_image', instance.featured_image))
+            if 'image_1' in update_fields_lower and instance.image_1:
+                image_fields_to_process.append(('image_1', instance.image_1))
+            if 'image_2' in update_fields_lower and instance.image_2:
+                image_fields_to_process.append(('image_2', instance.image_2))
+        else:
+            # If no specific update fields, check all images
+            logger.info(f"🔍 No specific update fields - checking all images")
+            for field_name, image_field in [
+                ('featured_image', instance.featured_image),
+                ('image_1', instance.image_1),
+                ('image_2', instance.image_2)
+            ]:
+                if image_field and image_field.name:
+                    logger.info(f"   Will process {field_name}: {image_field.name}")
+                    image_fields_to_process.append((field_name, image_field))
     
-#     logger.info(f"📊 Total images to process: {len(image_fields_to_process)}")
+    logger.info(f"📊 Total images to process: {len(image_fields_to_process)}")
     
-#     # Process each image
-#     for field_name, image_field in image_fields_to_process:
-#         if image_field and image_field.name:
-#             logger.info(f"  ⬆️ Uploading {field_name}: {image_field.name}")
+    # Process each image
+    for field_name, image_field in image_fields_to_process:
+        if image_field and image_field.name:
+            logger.info(f"  ⬆️ Uploading {field_name}: {image_field.name}")
             
-#             # Use threading for async upload
-#             import threading
-#             thread = threading.Thread(
-#                 target=upload_image_to_s3_simple,
-#                 args=(image_field, instance, field_name),
-#                 daemon=True
-#             )
-#             thread.start()
+            # Use threading for async upload
+            import threading
+            thread = threading.Thread(
+                target=upload_image_to_s3_simple,
+                args=(image_field, instance, field_name),
+                daemon=True
+            )
+            thread.start()
             
-#             logger.info(f"  🚀 Started upload thread for {field_name}")
-#         else:
-#             logger.warning(f"  ⚠️ Skipping {field_name}: no image or image name")
+            logger.info(f"  🚀 Started upload thread for {field_name}")
+        else:
+            logger.warning(f"  ⚠️ Skipping {field_name}: no image or image name")
     
-#     logger.info(f"✅ Signal handler completed for blog post {instance.id}")
+    logger.info(f"✅ Signal handler completed for blog post {instance.id}")

@@ -2,10 +2,8 @@
 from celery import shared_task
 from django.core.cache import cache
 import logging
-import boto3
-from django.conf import settings
-from .models import BlogPost
-import os
+from .models import BlogPost, upload_image_to_s3_simple  # Add this import
+from .serializers import BlogPostListSerializer  # Add this for warm_cache
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +11,6 @@ logger = logging.getLogger(__name__)
 def process_blog_images(blog_post_id):
     """Async task to process and upload blog images to S3"""
     try:
-        from .models import BlogPost, upload_image_to_s3_simple
-        
         blog_post = BlogPost.objects.get(id=blog_post_id)
         logger.info(f"📸 Processing images for blog post {blog_post_id}")
         
@@ -38,17 +34,3 @@ def process_blog_images(blog_post_id):
         logger.error(f"Blog post {blog_post_id} not found")
     except Exception as e:
         logger.error(f"Error processing images: {str(e)}")
-
-
-@shared_task
-def warm_cache():
-    """Warm up cache for frequently accessed endpoints"""
-    from .models import BlogPost
-    from .serializers import BlogPostListSerializer
-    
-    # Warm up blog latest cache
-    latest_posts = BlogPost.objects.filter(published=True).order_by('-published_date')[:6]
-    serializer = BlogPostListSerializer(latest_posts, many=True)
-    cache.set('blog_latest:default', serializer.data, 300)
-    
-    logger.info("🔥 Cache warmed up")

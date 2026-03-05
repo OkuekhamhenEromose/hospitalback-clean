@@ -5,6 +5,7 @@ from .models import Profile, GENDER_CHOICES, ROLE_CHOICES
 from django.contrib.auth.password_validation import validate_password
 from .utils import SendMail
 import logging
+from hospital.utils import upload_to_s3
 
 logger = logging.getLogger(__name__)
 
@@ -130,44 +131,57 @@ class RegistrationSerializer(serializers.Serializer):
         profile.gender   = validated_data.get('gender', None)
         profile.role     = validated_data.get('role', 'PATIENT')
 
+        # In RegistrationSerializer.create method, find the profile_pix section and replace with:
+
         if profile_pix:
             import os
             from django.utils.text import slugify
-
-            ext            = os.path.splitext(profile_pix.name)[1]
+            from datetime import datetime
+            from django.core.files.storage import default_storage
+            from django.core.files import File
+            
+            ext = os.path.splitext(profile_pix.name)[1]
             clean_username = slugify(username)
-            filename       = f'{clean_username}_profile{ext}'
-
+            filename = f'{clean_username}_profile{ext}'
+            s3_key = f"media/profile/{filename}"
+            
             logger.info(
-                'Uploading profile image for %s — original: %s, target: %s, size: %d bytes',
-                username, profile_pix.name, filename, profile_pix.size,
+                'Processing profile image for %s — %s (%d bytes)',
+                username, filename, profile_pix.size,
             )
 
-            try:
-                # FIX: profile_pix.save(filename, file, save=True) already
-                # writes the profile row to the database (save=True triggers a
-                # full model save). The original called profile.save() again
-                # immediately after, issuing a redundant UPDATE query.
-                profile.profile_pix.save(filename, profile_pix, save=True)
-                logger.info('Profile image saved for %s: %s', username, filename)
+                # Save to Django's default storage (local)
+            saved_path = default_storage.save(f"profile/{filename}", profile_pix)
+            logger.info(f'✅ Local save complete: {saved_path}')
+            
+            with default_storage.open(saved_path, 'rb') as f:
+                django_file = File(f)
+                
+                # Upload to S3
+                success, result = upload_to_s3(
+                    django_file,
+                    s3_key,
+                    metadata={
+                        'username': username, 
+                        'original_name': profile_pix.name,
+                        'uploaded_at': datetime.now().isoformat()
+                    }
+                )
+        
+                if success:
+                    logger.info(f'✅ S3 upload successful: {result}')
+                    # Update the profile with the file reference
+                    profile.profile_pix.name = saved_path
+                else:
+                    logger.error(f'❌ S3 upload failed: {result}')
+            
+            profile.save()
 
-                # Verify the upload succeeded
-                try:
-                    exists = profile.profile_pix.storage.exists(profile.profile_pix.name)
-                    logger.info('Upload verified (exists=%s), URL: %s', exists, profile.profile_pix.url)
-                except Exception as ve:
-                    logger.warning('Could not verify upload for %s: %s', username, ve)
 
-            except Exception as e:
-                logger.error('Failed to save profile image for %s: %s', username, e)
-                # Image save failed — profile row was created above via
-                # get_or_create but not saved with the other fields yet.
-                profile.save()
         else:
             profile.save()
             logger.info('Profile created without image for %s', username)
-
-        # Send welcome email asynchronously (non-blocking)
+            
         try:
             import threading
 

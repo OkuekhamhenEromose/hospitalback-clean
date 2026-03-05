@@ -1,4 +1,4 @@
-# hospital/models.py - CLEANED VERSION (Remove duplicates)
+import os
 from django.db import models
 from django.utils import timezone
 from users.models import Profile
@@ -505,69 +505,43 @@ def handle_blog_post_save(sender, instance, created, **kwargs):
     """SINGLE signal handler for uploading images to S3 - FIXED VERSION"""
     import logging
     logger = logging.getLogger(__name__)
+    from hospital.utils import upload_to_s3
     
     if kwargs.get('raw', False) or kwargs.get('update_fields'):
         return
     
     logger.info(f"📝 Processing images for blog post: {instance.id} - {instance.title}")
-    logger.info(f"   Created: {created}, Update fields: {kwargs.get('update_fields')}")
     
-    # Check which image fields need processing
-    image_fields_to_process = []
-    
-    # For new posts, process all images
-    if created:
-        logger.info(f"📸 New post - will process all images")
-        image_fields_to_process = [
-            ('featured_image', instance.featured_image),
-            ('image_1', instance.image_1),
-            ('image_2', instance.image_2)
-        ]
-    else:
-        # For updates, check which fields were updated
-        update_fields = kwargs.get('update_fields', set())
-        logger.info(f"🔄 Update fields detected: {update_fields}")
-        
-        if update_fields:
-            # Convert to lowercase for comparison
-            update_fields_lower = {f.lower() for f in update_fields}
-            
-            if 'featured_image' in update_fields_lower and instance.featured_image:
-                image_fields_to_process.append(('featured_image', instance.featured_image))
-            if 'image_1' in update_fields_lower and instance.image_1:
-                image_fields_to_process.append(('image_1', instance.image_1))
-            if 'image_2' in update_fields_lower and instance.image_2:
-                image_fields_to_process.append(('image_2', instance.image_2))
-        else:
-            # If no specific update fields, check all images
-            logger.info(f"🔍 No specific update fields - checking all images")
-            for field_name, image_field in [
-                ('featured_image', instance.featured_image),
-                ('image_1', instance.image_1),
-                ('image_2', instance.image_2)
-            ]:
-                if image_field and image_field.name:
-                    logger.info(f"   Will process {field_name}: {image_field.name}")
-                    image_fields_to_process.append((field_name, image_field))
-    
-    logger.info(f"📊 Total images to process: {len(image_fields_to_process)}")
+    # List of image fields to process
+    image_fields = [
+        ('featured_image', instance.featured_image),
+        ('image_1', instance.image_1),
+        ('image_2', instance.image_2),
+    ]
     
     # Process each image
-    for field_name, image_field in image_fields_to_process:
+    for field_name, image_field in image_fields:
         if image_field and image_field.name:
             logger.info(f"  ⬆️ Uploading {field_name}: {image_field.name}")
             
-            # Use threading for async upload
-            import threading
-            thread = threading.Thread(
-                target=upload_image_to_s3_simple,
-                args=(image_field, instance, field_name),
-                daemon=True
-            )
-            thread.start()
+            # Get filename and create S3 key
+            filename = os.path.basename(image_field.name)
+            s3_key = f"media/blog_images/{filename}"
             
-            logger.info(f"  🚀 Started upload thread for {field_name}")
-        else:
-            logger.warning(f"  ⚠️ Skipping {field_name}: no image or image name")
-    
-    logger.info(f"✅ Signal handler completed for blog post {instance.id}")
+            # Upload to S3 (file already saved locally by Django)
+            success, result = upload_to_s3(
+                image_field,
+                s3_key,
+                metadata={
+                    'blog_id': str(instance.id),
+                    'blog_title': instance.title[:100],
+                    'field': field_name
+                }
+            )
+            
+            if success:
+                logger.info(f"  ✅ Uploaded to S3: {result}")
+            else:
+                logger.error(f"  ❌ Failed to upload: {result}")
+
+                
